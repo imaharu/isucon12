@@ -1,0 +1,16 @@
+.bash_history
+.bash_logout
+.bashrc
+.docker/
+.hushlogin
+.lesshst
+.profile
+.sudo_as_admin_successful
+.viminfo
+bench/
+blackauth/
+data/
+initial_data/
+public/
+tmp/
+.ssh
