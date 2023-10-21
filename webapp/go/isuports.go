@@ -1239,18 +1239,20 @@ func playerHandler(c echo.Context) error {
 	defer fl.Close()
 	pss := []PlayerScoreRow{}
 	sql := `select player_score_v2.* from competition
-			inner join(
-				SELECT id,tenant_id ,player_id,competition_id,row_num,created_at,updated_at, max(row_num) as score
-				FROM player_score group by competition_id
-			) as player_score_v2
-			on competition.id = player_score_v2.competition_id
-			where competition.tenant_id = ? and player_score_v2.tenant_id = ?
-			order by competition.created_at ASC;
+		inner join(
+			SELECT id,tenant_id ,player_id,competition_id,row_num,created_at,updated_at, score
+			FROM player_score where player_id = ? group by competition_id having max(row_num) = row_num
+		) as player_score_v2
+		on competition.id = player_score_v2.competition_id
+		where competition.tenant_id = ? and player_score_v2.tenant_id = ?
+		order by competition.created_at ASC;
 			`
-	if err := tenantDB.GetContext(
+	if err := tenantDB.SelectContext(
 		ctx,
 		&pss,
 		sql,
+		p.ID,
+		v.tenantID,
 		v.tenantID,
 	); err != nil {
 		return fmt.Errorf("error Select competition: %w", err)
