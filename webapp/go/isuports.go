@@ -428,13 +428,22 @@ func lockFilePath(id int64) string {
 }
 
 // 排他ロックする
-func flockByTenantID(tenantID int64) (io.Closer, error) {
+func flockByTenantID(tenantID int64, lockType string) (io.Closer, error) {
 	p := lockFilePath(tenantID)
 
 	fl := flock.New(p)
-	if err := fl.Lock(); err != nil {
-		return nil, fmt.Errorf("error flock.Lock: path=%s, %w", p, err)
+	if lockType == "shared" {
+		if err := fl.RLock(); err != nil {
+			return nil, fmt.Errorf("error flock.Lock: path=%s, %w", p, err)
+		}
+	} else if lockType == "exclusive" {
+		if err := fl.Lock(); err != nil {
+			return nil, fmt.Errorf("error flock.Lock: path=%s, %w", p, err)
+		}
+	} else {
+		return nil, errors.New("unknown lock type")
 	}
+
 	return fl, nil
 }
 
@@ -565,7 +574,7 @@ func billingReportByCompetition(ctx context.Context, tenantDB dbOrTx, tenantID i
 	}
 
 	// player_scoreを読んでいるときに更新が走ると不整合が起こるのでロックを取得する
-	fl, err := flockByTenantID(tenantID)
+	fl, err := flockByTenantID(tenantID, "shared")
 	if err != nil {
 		return nil, fmt.Errorf("error flockByTenantID: %w", err)
 	}
@@ -1044,7 +1053,7 @@ func competitionScoreHandler(c echo.Context) error {
 	}
 
 	// / DELETEしたタイミングで参照が来ると空っぽのランキングになるのでロックする
-	fl, err := flockByTenantID(v.tenantID)
+	fl, err := flockByTenantID(v.tenantID, "exclusive")
 	if err != nil {
 		return fmt.Errorf("error flockByTenantID: %w", err)
 	}
@@ -1223,7 +1232,7 @@ func playerHandler(c echo.Context) error {
 	}
 
 	// player_scoreを読んでいるときに更新が走ると不整合が起こるのでロックを取得する
-	fl, err := flockByTenantID(v.tenantID)
+	fl, err := flockByTenantID(v.tenantID, "shared")
 	if err != nil {
 		return fmt.Errorf("error flockByTenantID: %w", err)
 	}
@@ -1349,7 +1358,7 @@ func competitionRankingHandler(c echo.Context) error {
 	}
 
 	// player_scoreを読んでいるときに更新が走ると不整合が起こるのでロックを取得する
-	fl, err := flockByTenantID(v.tenantID)
+	fl, err := flockByTenantID(v.tenantID, "shared")
 	if err != nil {
 		return fmt.Errorf("error flockByTenantID: %w", err)
 	}
