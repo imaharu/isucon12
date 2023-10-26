@@ -26,6 +26,8 @@ import (
 	"github.com/lestrrat-go/jwx/v2/jwa"
 	"github.com/lestrrat-go/jwx/v2/jwk"
 	"github.com/lestrrat-go/jwx/v2/jwt"
+
+	"github.com/wesovilabs/koazee"
 )
 
 const (
@@ -1033,16 +1035,6 @@ func competitionScoreHandler(c echo.Context) error {
 			return fmt.Errorf("row must have two columns: %#v", row)
 		}
 		playerID, scoreStr := row[0], row[1]
-		if _, err := retrievePlayer(ctx, tenantDB, playerID); err != nil {
-			// 存在しない参加者が含まれている
-			if errors.Is(err, sql.ErrNoRows) {
-				return echo.NewHTTPError(
-					http.StatusBadRequest,
-					fmt.Sprintf("player not found: %s", playerID),
-				)
-			}
-			return fmt.Errorf("error retrievePlayer: %w", err)
-		}
 
 		var score int64
 		if score, err = strconv.ParseInt(scoreStr, 10, 64); err != nil {
@@ -1066,6 +1058,34 @@ func competitionScoreHandler(c echo.Context) error {
 			CreatedAt:     now,
 			UpdatedAt:     now,
 		})
+	}
+
+	stream := koazee.StreamOf(playerScoreRows)
+	playerIDs := stream.Map(func(psr PlayerScoreRow) string {
+		return psr.ID
+	}).Out().Val().([]string)
+
+	sql, _, err := sqlx.In("SELECT Count(*) FROM player WHERE id in (?)", playerIDs)
+	if err != nil {
+		return fmt.Errorf("error retrievePlayer: %w", err)
+	}
+
+	var playerCount int
+
+	if err := tenantDB.SelectContext(
+		ctx,
+		&playerCount,
+		sql,
+		v.tenantID,
+	); err != nil {
+		return fmt.Errorf("error Select competition: %w", err)
+	}
+
+	if playerCount != len(playerIDs) {
+		return echo.NewHTTPError(
+			http.StatusBadRequest,
+			"player not found",
+		)
 	}
 
 	tx, err := tenantDB.BeginTxx(ctx, nil)
