@@ -1062,30 +1062,32 @@ func competitionScoreHandler(c echo.Context) error {
 
 	stream := koazee.StreamOf(playerScoreRows)
 	playerIDs := stream.Map(func(psr PlayerScoreRow) string {
-		return psr.ID
+		return psr.PlayerID
 	}).Out().Val().([]string)
 
-	sql, _, err := sqlx.In("SELECT Count(*) FROM player WHERE id in (?)", playerIDs)
-	if err != nil {
-		return fmt.Errorf("error retrievePlayer: %w", err)
-	}
+	if len(playerIDs) > 0 {
+		sql, params, err := sqlx.In("SELECT Count(*) FROM player WHERE id in (?)", playerIDs)
+		if err != nil {
+			return fmt.Errorf("error retrievePlayer: %w", err)
+		}
+		sql = tenantDB.Rebind(sql)
 
-	var playerCount int
+		var playerCount int
 
-	if err := tenantDB.SelectContext(
-		ctx,
-		&playerCount,
-		sql,
-		v.tenantID,
-	); err != nil {
-		return fmt.Errorf("error Select competition: %w", err)
-	}
+		if err := tenantDB.Get(
+			&playerCount,
+			sql,
+			params...,
+		); err != nil {
+			return fmt.Errorf("error Select competition: %w", err)
+		}
 
-	if playerCount != len(playerIDs) {
-		return echo.NewHTTPError(
-			http.StatusBadRequest,
-			"player not found",
-		)
+		if playerCount != len(playerIDs) {
+			return echo.NewHTTPError(
+				http.StatusBadRequest,
+				"player not found",
+			)
+		}
 	}
 
 	tx, err := tenantDB.BeginTxx(ctx, nil)
