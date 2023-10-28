@@ -27,7 +27,6 @@ import (
 	"github.com/lestrrat-go/jwx/v2/jwk"
 	"github.com/lestrrat-go/jwx/v2/jwt"
 
-	"github.com/wesovilabs/koazee"
 )
 
 const (
@@ -1022,6 +1021,8 @@ func competitionScoreHandler(c echo.Context) error {
 
 	var rowNum int64
 	playerScoreRows := []PlayerScoreRow{}
+	var playerIds []string
+	playerIdMap := make(map[string]struct{})
 	for {
 		rowNum++
 		row, err := r.Read()
@@ -1035,6 +1036,10 @@ func competitionScoreHandler(c echo.Context) error {
 			return fmt.Errorf("row must have two columns: %#v", row)
 		}
 		playerID, scoreStr := row[0], row[1]
+		if _, ok := playerIdMap[playerID]; !ok {
+			playerIds = append(playerIds, playerID)
+			playerIdMap[playerID] = struct{}{}
+		}
 
 		var score int64
 		if score, err = strconv.ParseInt(scoreStr, 10, 64); err != nil {
@@ -1060,13 +1065,8 @@ func competitionScoreHandler(c echo.Context) error {
 		})
 	}
 
-	stream := koazee.StreamOf(playerScoreRows)
-	playerIDs := stream.Map(func(psr PlayerScoreRow) string {
-		return psr.PlayerID
-	}).Out().Val().([]string)
-
-	if len(playerIDs) > 0 {
-		sql, params, err := sqlx.In("SELECT Count(*) FROM player WHERE id in (?)", playerIDs)
+	if len(playerIds) > 0 {
+		sql, params, err := sqlx.In("SELECT Count(*) FROM player WHERE id in (?)", playerIds)
 		if err != nil {
 			return fmt.Errorf("error retrievePlayer: %w", err)
 		}
@@ -1082,7 +1082,7 @@ func competitionScoreHandler(c echo.Context) error {
 			return fmt.Errorf("error Select competition: %w", err)
 		}
 
-		if playerCount != len(playerIDs) {
+		if playerCount != len(playerIds) {
 			return echo.NewHTTPError(
 				http.StatusBadRequest,
 				"player not found",
